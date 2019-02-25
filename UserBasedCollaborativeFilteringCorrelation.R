@@ -1,27 +1,108 @@
-### UBCF as a function - User-based CF for one user ###
-#######################################################
+#######################
+### User - based CF ###
+#######################   
+library(recommenderlab)
+library(moments)
+library(e1071)  
+install.packages("psych")
+library((psych))
+install.packages("cluster")
+library(cluster)
+install.packages("fpc")
+library(fpc)
+install.packages("tidyr")
+library((tidyr))
 
-install.packages("pointRes")
-library("pointRes")
+### Step 0. Read In data ###
+############################
 
-UserArtists <- read.csv("C:/Users/ckadic/Desktop/RecommendationTools/GroupAssignmentData/user_artists.dat", header=TRUE, sep="\t")
+wd = "/Users/ckadic/Desktop/RecommendationTools/GroupAssignmentData/"
+setwd(wd)
+getwd()
+UserArtists <- read.csv('user_artists.dat', sep="\t")
 UserArtistsMatrix <- as(UserArtists,"matrix")
 dim(UserArtistsMatrix)
+UserArtistsMatrix2 <- aggregate(weight ~ userID, data=UserArtistsMatrix, FUN=sum)
+
+
+########################################################################################################################################
+
+### UBCF explained - Step 1: Compute cosine similarity ###
+##########################################################
+
+### The hard way ###
+ptm <- proc.time()
+
+# Initialize empty similarity matrix
+similarity_matrix_THW <- matrix(, nrow = nrow(UserArtistsMatrix2), ncol = nrow(UserArtistsMatrix2), 
+                                dimnames = list(rownames(UserArtistsMatrix2), rownames(UserArtistsMatrix2)))
+
+# Calculate cosine similarity between all user pairs
+for(i in 1:nrow(UserArtistsMatrix2)) {
+  for(j in 1:nrow(UserArtistsMatrix2)) {
+    if (i < j){
+      # https://en.wikipedia.org/wiki/Matrix_multiplication
+      sim <- sum(UserArtistsMatrix2[i, ]*UserArtistsMatrix2[j,], na.rm=TRUE)/sqrt(sum(UserArtistsMatrix2[i, ]^2, na.rm=TRUE) * sum(UserArtistsMatrix2[j, ]^2, na.rm=TRUE))
+      similarity_matrix_THW[i,j] <- sim
+      similarity_matrix_THW[j,i] <- sim
+    }
+  }
+}
+
+
+Time <- (proc.time() - ptm)
+Time
+# My Mac = +/- 260 sec
+
+### Make use of R packages ###
+
+#install.packages('proxy')
+library('proxy')
+
+ptm <- proc.time()
+
+similarity_matrix <- as.matrix(simil(UserArtistsMatrix2, method="cosine"))
+
+Time <- (proc.time() - ptm)
+Time
+# My Mac = +/- 12 sec
+
+### UBCF explained - Step 2: Retain nearest neighbors ###
+#########################################################
+
+### Keep nearest neighbors based on similarity threshold ###
+hist(similarity_matrix)
+
+threshold = 0.5
+
+similarity_matrix_threshold <- similarity_matrix
+similarity_matrix_threshold[similarity_matrix_threshold < threshold] <- NA
+
+### Keep N nearest neighbors ###
+NN=10
+
+similarity_matrix_NN <- similarity_matrix
+
+for (k in 1:nrow(similarity_matrix_NN)){
+  crit_val <- -sort(-similarity_matrix_NN[k,])[NN]
+  similarity_matrix_NN[k,] <- ifelse(similarity_matrix_NN[k,] >= crit_val, similarity_matrix_NN[k,], NA)
+}
+
 
 ### UBCF explained - Step 3: Prediction ###
 ###########################################
 N = 3
 
-prediction <- matrix(, nrow=nrow(UserArtistsMatrix), ncol(UserArtistsMatrix), dimnames=list(rownames(UserArtistsMatrix), colnames(UserArtistsMatrix)))
-TopN <- matrix(, nrow=nrow(UserArtistsMatrix), N, dimnames=list(rownames(UserArtistsMatrix)))
+prediction <- matrix(, nrow=nrow(UserArtistsMatrix2), ncol(UserArtistsMatrix2), dimnames=list(rownames(UserArtistsMatrix2), colnames(UserArtistsMatrix2)))
+TopN <- matrix(, nrow=nrow(UserArtistsMatrix2), N, dimnames=list(rownames(UserArtistsMatrix2)))
 #Preparation: Compute (r - mean(ri))
 
-for (u in rownames(UserArtistsMatrix)){
+for (u in rownames(UserArtistsMatrix2)){
   similarity_vector <- na.omit(similarity_matrix_NN[u, ])
   
-  NN_norm <- UserArtistsMatrix[rownames(UserArtistsMatrix) %in% names(similarity_vector),]
+  NN_norm <- UserArtistsMatrix2[rownames(UserArtistsMatrix2) %in% names(similarity_vector),]
   
-  CM <- colMeans(UserArtistsMatrixx, na.rm=TRUE)
+  CM <- colMeans(UserArtistsMatrix2, na.rm=TRUE)
   for (l in 1:ncol(NN_norm)){
     NN_norm[,l] <- NN_norm[,l] - CM[l]
   }
@@ -31,13 +112,14 @@ for (u in rownames(UserArtistsMatrix)){
   Num = similarity_vector %*% NN_norm
   
   #Prediction
-  prediction[u, ] =  mean(UserArtistsMatrix[u, ], na.rm=TRUE)  + (Num/sum(similarity_vector, na.rm=TRUE))
+  prediction[u, ] =  mean(UserArtistsMatrix2[u, ], na.rm=TRUE)  + (Num/sum(similarity_vector, na.rm=TRUE))
   TopN[u, ] <- names(sort(-prediction[u, ]))[1:N]
 }
 
+########################################################################################################################################
 
-
-
+### UBCF as a function - User-based CF for one user ###
+#######################################################
 
 UserBasedCFOneUser <- function(UserArtists, user, N, NN, onlyNew=TRUE){
   
@@ -159,38 +241,26 @@ UserBasedCF <- function(train_data, test_data, N, NN, onlyNew=TRUE){
 ### Split in train and test ###
 ###############################
 
-train <- UserArtistsMatrix[1:1050,]
+train <- UserArtistsMatrix2[1:1050,]
 test <- UserArtistsMatrix[1051:2100,]
 
 ### Recommend for one user ###
 ##############################
 
-#userID178
-res <- UserBasedCFOneUser(train, user=178 , N=2, NN=3, onlyNew=TRUE)
+#200
+res <- UserBasedCFOneUser(train, user='200', N=10, NN=10, onlyNew=TRUE)
 res
 cat(UserArtists[names(res)], sep = "\n\n")
 
-#userID200
-res <- UserBasedCFOneUser(train, userID=200, N=2, NN=3, onlyNew=TRUE)
+#238
+res <- UserBasedCFOneUser(train, user='238', N=10, NN=10, onlyNew=TRUE)
 res
 cat(UserArtists[names(res)], sep = "\n\n")
 
 ### Recommend for all test users ###
 ####################################
 
-ResultsUBCF <- UserBasedCF(train, test, N=2, NN=3, onlyNew=TRUE)
+ResultsUBCF <- UserBasedCF(train, test, N=3, NN=10, onlyNew=TRUE)
 
 ResultsUBCF$prediction
 ResultsUBCF$topN
-
-
-
-
-
-
-
-
-
-
-
-
