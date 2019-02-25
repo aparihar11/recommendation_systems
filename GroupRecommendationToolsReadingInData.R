@@ -10,7 +10,7 @@ install.packages("Rmpfr") # select n
 library(recommenderlab)
 
 ## Set wd to location where you 
-wd = "/Users/ckadic/Downloads/GroupAssignmentData/"
+wd = "/Users/ckadic/Desktop/RecommendationTools/GroupAssignmentData/"
 setwd(wd)
 getwd()
 
