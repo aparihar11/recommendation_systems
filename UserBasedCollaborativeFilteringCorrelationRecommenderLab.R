@@ -4,63 +4,71 @@
 
 # https://cran.r-project.org/web/packages/recommenderlab/vignettes/recommenderlab.pdf
 
-#install.packages("recommenderlab")
 library(recommenderlab)
-#install.packages("stats")
-library("stats")
-
-UserArtists <- read.csv("C:/Users/ckadic/Desktop/RecommendationTools/GroupAssignmentData/user_artists.dat", header=TRUE, sep="\t")
-UserArtistsMatrix <- as(UserArtists,"matrix")
-dim(UserArtistsMatrix)
 
 ### Read In data ###
 ####################
-recommenderRegistry$get_entry("UBCF", dataType="realRatingMatrix")
+wd = "/Users/ckadic/Desktop/RecommendationTools/GroupAssignmentData/"
+setwd(wd)
+getwd()
+UserArtists <- read.csv('user_artists.dat', sep="\t")
+UserArtistsMatrix <- as(UserArtists,"matrix")
+dim(UserArtistsMatrix)
+UserArtistsMatrix2 <- aggregate(weight ~ userID, data=UserArtistsMatrix, FUN=sum)
+
+r <- recommenderRegistry$get_entry("UBCF", dataType="realRatingMatrix")
 
 ### Prepare data ###
 ####################
 train <- UserArtists[1:1050,]
 test <- UserArtists[1051:2100,]
 
-userID = '178'
-testUser <- UserArtists[userID,]
+user = '200'
+testUser <- UserArtists[user,]
 
 ### Run model ###
 #################
 
-recom <- Recommender(train, method = "UBCF")
-recom
+rtr <- as(train, "realRatingMatrix")
+rts <- as(test, "realRatingMatrix")
+
+
+recom1 <- Recommender(rtr, method = "UBCF", parameter=NULL)
+recom1
+
+recom2 <- Recommender(rts, method = "UBCF", parameter=NULL)
+recom2
 
 ### Recommend for one user ###
 ##############################
 
-#u200
-userID = '200'
-testUser <- UserArtists[userID,]
+#u2000
+user = 'u2000'
+testUser <- UserArtists[user,]
 
-predUser <- predict(recom, testUser, n = 3)
+predUser <- predict(recom2, newdata=rts, n = 3)
 
 getList(predUser)
 predUser@ratings
 
-cat(UserArtists[getList(bestN(predUser, 3))[[1]]], sep = "\n\n")
+cat(UserArtists[getList(bestN(predUser, 2))[[3]]], sep = "\n\n")
 
 
 #u238
-userID = '238'
+user = '238'
 testUser <- UserArtists[user,]
 
-predUser <- predict(recom, testUser, n = 3)
+predUser <- predict(recom2, newdata=rts, n = 3)
 
 getList(predUser)
 predUser@ratings
 
-cat(UserArtists[getList(bestN(predUser, 3))[[1]]], sep = "\n\n")
+cat(UserArtists[getList(bestN(predUser, 45))[[1]]], sep = "\n\n")
 
 ### Recommend for all users ###
 ###############################
 
-pred <- predict(recom, test, n = 10)
+pred <- predict(recom2, newdata=rts, n = 10)
 
 getList(pred)
 pred@ratings
@@ -68,10 +76,10 @@ pred@ratings
 ### Change parameters ###
 #########################
 
-recom2 <- Recommender(train, method = "UBCF", parameter = list(method = 'euclidean', nn = 10, normalize = "z-score"))
-recom2
+recom1 <- Recommender(rtr, method = "UBCF", parameter = list(method = 'euclidean', nn = 10, normalize = "z-score"))
+recom1
 
-pred2 <- predict(recom2, testUser, n = 3)
+pred2 <- predict(recom2, newdata=rts, n = 3)
 
 getList(pred2)
 pred2@ratings
@@ -79,4 +87,4 @@ pred2@ratings
 cat(UserArtists[getList(bestN(pred2, 3))[[1]]], sep = "\n\n")
 
 ## All ratings
-predRatings <- as(predict(recom2, testUser, n = 3, type = "ratings"), "matrix")
+predRatings <- as(predict(recom2, newdata=rts, n = 3, type = "ratings"), "matrix")
