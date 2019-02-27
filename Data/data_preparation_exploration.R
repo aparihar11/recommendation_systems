@@ -2,14 +2,15 @@
 #####loading required packages
 #install.packages("tidyr")
 #install.packages("dplyr")
-#install.packages("Recommenderlab")
+#install.packages("recommenderlab")
 #install.packages("lsa")
-x<-c("data.table","dplyr","plotly","readr","recommenderlab", "ggplot2","tidyr","reshape2","jsonlite" ,"Recommenderlab","lsa","wordcloud")
+x<-c("data.table","dplyr","plotly","readr","recommenderlab", "ggplot2","tidyr","reshape2","jsonlite" ,"recommenderlab","lsa","wordcloud")
+setwd("C:\\Users\\aparihar\\Documents\\lastfm\\")
 lapply(x, require, character.only = TRUE)
 source("function.R")
 
 #####setting working directory
-setwd("C:\\Users\\aparihar\\Documents\\lastfm\\")
+
 
 ####content-based recommendation systems, 
 ####'user_taggedartists.dat' and 'tags.dat' data. 
@@ -18,6 +19,7 @@ user_tags <- read.delim("user_taggedartists.dat", header = TRUE)
 tags <- read.delim("tags.dat", header = TRUE)
 user_artists <- read.table("user_artists.dat", header = TRUE, sep = "", stringsAsFactors = FALSE)
 artists <- read.delim("artists.dat", header = TRUE)
+artists$name<-as.character(artists$name)
 
 ###join tag data for content filtering
 artist_tags <- inner_join(user_tags, tags, by="tagID")
@@ -45,8 +47,7 @@ num_visits=apply(visits_1k,1,function(x) return(sum(!is.na(x))))
 visits_1k = visits_1k[num_visits>10,]
 dim(visits_1k)
 visits_1k=t(scale(t(visits_1k))[,])
-collab_data<-visits_1k
-save(collab_data,file="collaboration_filter.Rdata")
+
 
 ###join artists data
 name_artists<-inner_join(user_artists,artists, by= c("artistID"="id"))
@@ -77,8 +78,44 @@ wordcloud(words = tagfreq$tagValue, freq = tagfreq$n, min.freq = 20,
 ###########################################################################
 ###########################################################################
 
-#####################Machine Learning#####################################
+#####################Machine Learning- Collaborative Filtering#####################################
 ###########################################################################
 ###########################################################################
+
+
+library(recommenderlab)
+visits_1k_rrm=as(as.matrix(visits_1k),"realRatingMatrix")
+set.seed(100)
+eval_sets <- evaluationScheme(data = visits_1k_rrm, method = "split", train = .8, given = 10, goodRating=3, k = 1)
+
+getArtistName=function(artistid){
+  return(artists$name[artists$charid==artistid])
+}
+#Vectorize the function to enable get values for a vector of ids
+getArtistName=Vectorize(getArtistName)
+
+train=as.matrix(getRatingMatrix(getData(eval_sets,"train")))
+test=as.matrix(getRatingMatrix(getData(eval_sets,"known")))
+#realRating Matrix stores missing value as 0, convert them back to NA
+train[train==0]=NA
+test[test==0]=NA
+#Check prediction for one user
+pred1=ubcf_recommend(train,test[4,])
+cat("\n**** Recommendation for user",rownames(test)[4],"\n")
+
+recommend=getArtistName(colnames(train)[pred1$recommendation])
+cat(recommend,sep="\n")
+
+
+############Machine Learning-Cluster Based##################################
+############################################################################
+source("cluster_func.R")
+
+na.omit(visits_1k)
+visits_1k[!is.finite(visits_1k)] <- 0
+
+
+ClusterBasedCF(visits_1k,center=20,iter=10)
+
 
 
