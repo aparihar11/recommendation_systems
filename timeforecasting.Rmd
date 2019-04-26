@@ -1,0 +1,469 @@
+---
+title: "assignment_timeseries"
+author: "ajay parihar"
+date: "April 26, 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exercise 1
+
+In this exercise we are looking at Belgium industry turnover for manufacturing of beverages 
+
+First we import data in R and split it in train/test
+
+```{r ques1}
+library(fpp2)
+library(readxl)
+library(portes)
+#install.packages("lmtest")
+library(lmtest)
+
+setwd("C:/Users/aparihar/Downloads")
+
+# read the data
+data <- read_excel("DataSets.xlsx", sheet = "Turnover") 
+str(data)
+#date POSIXCT format and retail sales num
+
+#create time series object 
+#frequency = 12 - monthly data, start year = 1998
+rsv <- ts(data[,2], frequency = 12, start = c(2000,1))
+
+
+# Split the data in training and test set
+
+rsv1 <- window(rsv, end=c(2015,12))
+
+rsv2 <- window(rsv, start=c(2016,1))
+str(rsv2)
+
+```
+
+## check for seasonality 
+
+You can also embed plots, for example:
+
+```{r Ques1, echo=FALSE}
+# Plot the data
+plot(rsv)
+lines(rsv1, col="red")
+lines(rsv2, col="blue")
+h <- length(rsv2)
+h
+```
+## check for seasonality 
+
+
+```{r seasonality1, echo=FALSE}
+par(mfrow=c(1,2))
+seasonplot(rsv, year.labels=TRUE, year.labels.left=TRUE,main="Seasonal plot",ylab="Retail Sales Volume",col=rainbow(20), pch=19)
+monthplot(rsv, main="Month plot", ylab = "Retail Sales Volume",xlab="Month", type="l")
+```
+###Naive method, residual diagnostic and accuracy
+2. Create forecasts using the seasonal naive method. Check the residual diagnostics
+and the forecast accuracy
+
+```{r Naive, echo=FALSE}
+n <- snaive(rsv1, h=36)# seasonal naive
+a_n <- accuracy(n,rsv2)[,c(2,3,5,6)]
+a_train_n <- a_n[1,]
+a_train_n
+
+
+a_test_n <- a_n[2,]
+a_test_n
+
+plot(rsv,main="Retail Sales Volume", ylab="",xlab="Month")
+lines(n$mean,col=4)
+legend("topleft",lty=1,col=c(4),legend=c("Seaonsal naive"))
+
+res <- residuals(n)
+checkresiduals(n)
+n_final <- snaive(rsv, h=23)
+plot(n_final)
+
+```
+###Forecasting using STL decomposition
+3.Use an STL decomposition to forecast the turnover index. Use the appropriate
+underlying methods to do so. Check the residual diagnostics and the forecast
+accuracys
+
+
+```{r STLDecomposition }
+
+d <- stl(rsv1[,1], t.window=15, s.window=13)
+
+rsvadj <- seasadj(d)
+
+#forecast()
+f_d <- forecast(d, method="rwdrift", h=h) 
+
+plot(f_d)
+plot(rwf(rsvadj, drift=TRUE, h=h), col="red")
+lines(rsv, col="black")
+lines(f_d$mean, col="green")
+legend("topleft", lty=1, col=c("black", "red", "blue", "green"),legend=c("Time series","Seasonally adjusted series","Seasonally adjusted forecast", "Final forecast"))
+a_d <- accuracy(f_d,rsv2)[,c(2,3,5,6)]
+a_train_d <- a_d[1,]
+a_train_d
+a_test_d <- a_d[2,]
+a_test_d
+checkresiduals(f_d)
+res <- na.omit(f_d$residuals)
+checkresiduals(res)
+LjungBox(res, lags=seq(1,24,4), order=1)
+
+d_final <- stl(rsv[,1], t.window=15, s.window=13)
+rsvadj <- seasadj(d_final)
+f_d_final <- forecast(d_final, method="rwdrift", h=23)
+plot(f_d_final)
+
+```
+
+In the graph below, we plot the various elements that make up the final forecast.
+
+
+###Holt-Winters method
+
+4.Generate forecasts using Holt-Winters’ method. Check the residual diagnostics
+and the forecast accuracy
+
+```{r  holtwinter}
+fc <- hw(rsv,seasonal="mult")
+
+plot(fc)
+
+fc1 <- hw(rsv,seasonal="mult",exponential=TRUE, h=24)
+
+#damped exponential trend
+
+fc2 <- hw(rsv,seasonal="mult",exponential=TRUE, damped=TRUE, h=24)
+
+#additive damped trend
+
+fc3 <- hw(rsv ,seasonal="mult",damped=TRUE, h=24)
+
+a_fc <- accuracy(fc)[,c(2,3,5,6)]
+
+a_fc1 <- accuracy(fc1)[,c(2,3,5,6)]
+
+a_fc2 <- accuracy(fc2)[,c(2,3,5,6)]
+
+a_fc3 <- accuracy(fc3)[,c(2,3,5,6)]
+
+acc <- rbind(a_fc, a_fc1, a_fc2, a_fc3)
+
+rownames(acc) <- c("a_fc", "a_fc1", "a_fc2", "a_fc3")
+
+acc
+fit <- rbind(fc$model$aic, fc1$model$aic, fc2$model$aic, fc3$model$aic)
+
+colnames(fit) <- c("AIC")
+
+rownames(fit) <- c("a_fc", "a_fc1", "a_fc2", "a_fc3")
+
+fit
+
+##FC1 has best accuracy
+checkresiduals(fc1)
+
+```
+###ETS model
+5. Generate forecasts using ETS. First select the appropriate model(s) yourself
+and discuss their performance. Compare these models with the results of the
+automated ETS procedure. Check the residual diagnostics and the forecast
+accuracy for the various ETS models you’ve considered.
+
+```{r ETSModel}
+#Models without damping (excluding possibly unstable models)
+e1 <- ets(rsv1, model="AAA")
+e2 <- ets(rsv1, model="MAA")
+e3 <- ets(rsv1, model="MAM")
+e4 <- ets(rsv1, model="MMM")
+#Models with damping (excluding possibly unstable models)
+e5 <- ets(rsv1, model="AAA", damped=TRUE)
+e6 <- ets(rsv1, model="MAA", damped=TRUE)
+e7 <- ets(rsv1, model="MAM", damped=TRUE)
+e8 <- ets(rsv1, model="MMM", damped=TRUE)
+
+m <- c("AAA", "MAA", "MAM", "MMM")
+
+result <- matrix(data=NA, nrow=4, ncol=9)
+
+for (i in 1:4){
+  model <- ets(rsv1, model=m[i], damped=FALSE)
+  f <- forecast(model, h=length(rsv2))
+  a <- accuracy(f, rsv2)
+  result[i,1] <- model$aicc
+  result[i,2] <- a[1,2] 
+  result[i,3] <- a[1,3] 
+  result[i,4] <- a[1,5]
+  result[i,5] <- a[1,6]
+  result[i,6] <- a[2,2]
+  result[i,7] <- a[2,3]
+  result[i,8] <- a[2,5]
+  result[i,9] <- a[2,6]
+} 
+
+rownames(result) <- m
+
+result[,1] # Compare AICc values
+
+#train results
+a_train_e1 <- result[,2:5] 
+colnames(a_train_e1) <- c("RMSE", "MAE", "MAPE", "MASE") 
+a_train_e1
+
+#test results
+a_test_e1 <- result[,6:9]
+colnames(a_test_e1) <- c("RMSE", "MAE", "MAPE", "MASE")
+a_test_e1
+m2 <- c("AAA", "MAA", "MAM", "MMM")
+m3 <- c("AAdA", "MAdA", "MAdM", "MMdM")
+
+result1 <- matrix(data=NA, nrow=4, ncol=9)
+
+for (i in 1:4){
+  model <- ets(rsv1, model=m2[i], damped= TRUE)
+  f <- forecast(model, h=length(rsv2))
+  a <- accuracy(f, rsv2)
+  result1[i,1] <- model$aicc
+  result1[i,2] <- a[1,2] 
+  result1[i,3] <- a[1,3] 
+  result1[i,4] <- a[1,5]
+  result1[i,5] <- a[1,6]
+  result1[i,6] <- a[2,2]
+  result1[i,7] <- a[2,3]
+  result1[i,8] <- a[2,5]
+  result1[i,9] <- a[2,6]
+} 
+
+rownames(result1) <- m3
+
+result1[,1] # Compare AICc values
+
+#results training set
+a_train_e2 <- result1[,2:5]
+colnames(a_train_e2) <- c("RMSE", "MAE", "MAPE", "MASE")
+a_train_e2
+
+#test data results
+a_test_e2 <- result1[,6:9]
+colnames(a_test_e2) <- c("RMSE", "MAE", "MAPE", "MASE")
+a_test_e2
+
+#The damped MAM model shows the best AICc.
+#Again, the forecast accuracy results on the training set are comparable over the models,
+#but on the test set the damped AAA and MAA models outperform the other models.
+#Therefore, we select the damped AAA model. This is the Holt-Winters seasonal method with damping
+
+summary(e5)
+checkresiduals(e5)
+
+res <- na.omit(e5$residuals)
+LjungBox(res, lags = seq(length(e5$par),24,4), order=length(e5$par))
+
+#For these residuals, we do reject the null hypothesis of white noise. 
+#We compare the results with those of the automated ETS procedure.
+
+auto_ets <- ets(rsv1)
+auto_ets$method
+
+f <- forecast(auto_ets, h=length(rsv2)) 
+accuracy(f, rsv2)[,c(2,6)]
+
+checkresiduals(auto_ets)
+
+#The MAdM damped model shows the best ???t (measured as AICc).
+#However, this is not the model with the best performance in terms of forecast accuracy.
+#Our ???nal choice among the ets models therefore is the AAdA model, although we recognize that the residuals of this model do not behave well.
+#We ???t the model to the complete data set and generte forecasts up to the end of 2020.
+
+e_final <- ets(rsv, model = "AAA", damped = TRUE)
+e_final_f <- forecast(e_final, h=23)
+plot(e_final_f)
+
+
+
+```
+
+### ARIMA Model
+6. Generate forecasts using ARIMA. First select the appropriate model(s) yourself
+and discuss their performance. Compare these models with the results of the
+auto.arima procedure. Check the residual diagnostics and the forecast accuracy
+for the various ARIMA models you’ve considered.
+
+```{r arimamodel}
+tsdisplay(rsv1, main="Retail Sales Volume", ylab="Retail Sales Index", xlab="Year")
+
+#The ACF shows that nonstationarity is mainly caused by seasonality, and to a lesser extent by the trend. 
+#We start by di???erencing the data (the ndiffs function suggests one di???erence). Next, the nsdiffs function
+#proposes to take seasonal di???erences as well.
+
+ndiffs(rsv1)
+
+#The characteristics of the double di???erenced time series are as follows:
+tsdisplay(diff(diff(rsv1,12)), main="Double differenced retail sales volume", ylab="Retail Sales Index", xlab="Year")
+
+#6.2 Model estimation
+#We start with the auto.arima procedure to get a ???rst idea of a suitable model. 
+#We disable the stepwise and approximate search, and ask for ???rst and seasonal di???erences.
+
+m0 <- auto.arima(rsv1, stepwise = FALSE, approximation = FALSE, d=1, D=1)
+
+#residual check
+checkresiduals(m0)
+
+tsdisplay(m0$residuals)
+
+LjungBox(m0$residuals, lags=seq(length(m0$coef),24,4), order=length(m0$coef))
+f0 <- forecast(m0, h=h) 
+accuracy(f0,rsv2)[,c(2,3,5,6)]
+getinfo <- function(x,h,...) { 
+  train.end <- time(x)[length(x)-h] 
+  test.start <- time(x)[length(x)-h+1] 
+  train <- window(x,end=train.end) 
+  test <- window(x,start=test.start) 
+  fit <- Arima(train,...) 
+  fc <- forecast(fit,h=h) 
+  a <- accuracy(fc,test) 
+  result <- matrix(NA, nrow=1, ncol=5) 
+  result[1,1] <- fit$aicc 
+  result[1,2] <- a[1,6] 
+  result[1,3] <- a[2,6] 
+  result[1,4] <- a[1,2] 
+  result[1,5] <- a[2,2] 
+  return(result) 
+  }
+
+mat <- matrix(NA,nrow=54, ncol=5)
+modelnames <- vector(mode="character", length=54) 
+line <- 0 
+
+for (i in 2:4){ 
+  for (j in 0:2){
+    for (k in 0:1){
+      for (l in 0:2){
+        line <- line+1
+        mat[line,] <- getinfo(rsv,h=37,order=c(i,1,j),seasonal=c(k,1,l))
+        modelnames[line] <- paste0("ARIMA(",i,",1,",j,")(",k,",1,",l,")[12]") 
+      }
+    }
+  }
+}
+
+colnames(mat) <- c("AICc", "MASE_train", "MASE_test", "RMSE_train", "RMSE_test") 
+rownames(mat) <- modelnames #mat
+
+# best AICc 
+mat[mat[,1]==min(mat[,1])]
+
+#best MASE_train
+mat[mat[,2]==min(mat[,2])]
+
+#best MASE_test
+mat[mat[,3]==min(mat[,3])]
+
+#best RMSE_train
+mat[mat[,4]==min(mat[,4])]
+
+#best RMSE_test 
+mat[mat[,5]==min(mat[,5])]
+
+#Based on these analyses, we select 3 models that could bring us closer to the most suitable model:
+#1. m0: ARIMA(3,1,1)(0,1,1) is the model selected by auto.arima. It shows acceptable ???t, forecasting accuracy and residual diagnostics.
+#2. m1: ARIMA(4,1,2)(0,1,1) shows the best AICc.
+#3. m2: ARIMA(4,1,2)(1,1,2) shows the best MASE and RMSE on the training set.
+#4. m3: ARIMA(4,1,0)(1,1,2) shows the best MASE and RMSE on the test set.
+#We now study these selected models in more detail.
+
+m1 <- Arima(rsv1, order=c(4,1,2), seasonal=c(0,1,1))
+coeftest(m1)
+LjungBox(m1$residuals, lags=seq(length(m1$coef),24,4), order=length(m1$coef))
+tsdisplay(m1$residuals)
+f1 <- forecast(m1, h=h)
+
+
+m2 <- Arima(rsv1, order=c(4,1,2), seasonal=c(1,1,2))
+coeftest(m2)
+LjungBox(m2$residuals, lags=seq(length(m2$coef),24,4), order=length(m2$coef))
+tsdisplay(m2$residuals)
+f2 <- forecast(m2, h=h)
+
+
+m3 <- Arima(rsv1, order=c(4,1,0), seasonal=c(1,1,2))
+coeftest(m3)
+LjungBox(m3$residuals, lags=seq(length(m3$coef),24,4), order=length(m3$coef))
+tsdisplay(m3$residuals)
+f3 <- forecast(m3, h=h)
+
+#We bring together the relevant accuracy measures in the tables below.
+a_m0 <- accuracy(f0,rsv2)[,c(2,3,5,6)]
+a_m1 <- accuracy(f1,rsv2)[,c(2,3,5,6)]
+a_m2 <- accuracy(f2,rsv2)[,c(2,3,5,6)] 
+a_m3 <- accuracy(f3,rsv2)[,c(2,3,5,6)]
+
+a_train_a <- rbind(a_m0[1,], a_m1[1,], a_m2[1,], a_m3[1,]) 
+rownames(a_train_a) <- c("a_m0", "a_m1", "a_m2", "a_m3") 
+a_train_a
+
+a_test_a <- rbind(a_m0[2,], a_m1[2,], a_m2[2,], a_m3[2,]) 
+rownames(a_test_a) <- c("a_m0", "a_m1", "a_m2", "a_m3") 
+a_test_a
+
+#We observe that the requirement of white noise residuals is not ful???lled in model m3,
+#which is also the best performing model in terms of forecast accuracy on the test set.
+#Model m2 shows the best MASE and RMSE for the training set, but performs also fairly well on the test set in terms of forecast accuracy.
+#For this model, we also record acceptable residual diagnostics.
+
+#6.3 Final model and forecasts
+#The ???nal model is an ARIMA(4,1,2)(1,1,2)[12]. We show the estimated parameters and the generated forecasts below. 
+#Note that the prediction intervals around the forecasts are quite small, indicating that our forecast has reasonably high precision.
+
+a_final <- Arima(rsv, order=c(4,1,2), seasonal=c(1,1,2)) 
+summary(a_final)
+
+a_final_f <- forecast(a_final, h=23) 
+plot(a_final_f)
+
+
+```
+
+###compare difference models and forecast
+7. Compare the different models in terms of residual diagnostics, model fit, and
+forecast accuracy. Analyse your results and select your final model.
+8. Forecast
+
+```{r }
+####  7 Conclusion  ####
+#In this section, we compare the performance of the selected models, being the seasonal naive, the STL decomposition, the ets procedure and ARIMA. 
+#We forecast accuracy is summarized in the tables below.
+
+final_train <- rbind(a_train_n, a_train_d, a_train_e2[1,], a_train_a[3,])
+rownames(final_train) <- c("snaive", "decompose", "AAdA", "ARIMA(4,1,2)(1,1,2)[12]") 
+final_train
+
+final_test <- rbind(a_test_n, a_test_d, a_test_e2[1,], a_test_a[3,]) 
+rownames(final_test) <- c("snaive", "decompose", "AAdA", "ARIMA(4,1,2)(1,1,2)[12]")
+final_test
+
+#We observe that the selected ARIMA model performs best on the training set. 
+#On the test set, the best forecast accuracy is recorded for the AAdA ets model. 
+#However, the residual diagnostics were not satisfactory for this model. 
+#The performance of the ARIMA(4,1,2)(1,1,2)[12] were not bad either, and for this model the null hypothesis of white noice residuals could not be rejected. 
+#Overall, we consider this as a well performing model. This will be the ???nal model for generating the forecasts up to 2020.
+
+model <- Arima(rsv, model = m3) 
+summary(model)
+
+♥plot(forecast(model, h=23), include = 80)
+
+
+```
+
